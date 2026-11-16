@@ -24,7 +24,7 @@ Two hard limits shape everything below:
 
 There's no score for the agent yet, only anecdotes. Do this first, because it tells us which of the later options is worth doing.
 
-1. **Turn the suite into a benchmark.** `tests/run-tests.ps1` covers 12 checks today. Add scenarios from the real failures, rebuilt in the sandbox:
+1. **Turn the suite into a benchmark.** `tests/run-tests.ps1` covers 11 checks today (startup smoke, the dictation self-test, and 9 agent checks). Add scenarios from the real failures, rebuilt in the sandbox:
    - "add more to that list" (session memory);
    - "open X" when X is already open;
    - an Outlook-like compose form with placeholders and a cursor that doesn't follow `SetFocus`;
