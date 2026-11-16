@@ -101,3 +101,7 @@ ROADMAP.md              what's next
 ## Status
 
 This is a working prototype. Dictation is solid. The agent handles simple single-app tasks; it struggles with complex apps and with nuance, because it's a 4B model. The confirmations and the "Heard:" line on the card are how you catch its mistakes. See [ROADMAP.md](ROADMAP.md).
+
+## License
+
+[Apache-2.0](LICENSE). The Nemotron 3.5 Bolt weights and llama.cpp are separate projects, under their own licenses.
