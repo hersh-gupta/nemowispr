@@ -1,0 +1,14 @@
+# Runtime data normally lives in %USERPROFILE%\.local\dictate, outside the repo. These patterns keep
+# it out of git if BOLT_DICTATE_HOME ever points here: history holds every dictation and command.
+history*.jsonl
+dictate.log*
+last-failed.wav
+speech-*.wav
+tone-*.wav
+
+__pycache__/
+*.pyc
+.venv/
+
+# built from tests/agent/AgentSandbox.cs by tests/agent/build-sandbox.ps1
+*.exe
