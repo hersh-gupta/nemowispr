@@ -16,7 +16,7 @@ try {
   Push-Location $Repo
   $extra = @(); if ($DryRun) { $extra += '--dry-run' }; if ($Confirm) { $extra += '--confirm', $Confirm }
   foreach ($a in $Answer) { $extra += '--answer', $a }; if ($Speak) { $extra += '--speak' }; if ($Cards) { $extra += '--cards' }
-  $out = uv run --script bolt_dictate.py --agent $Command @extra 2>&1 | Out-String
+  $out = uv run --script nemowhisper.py --agent $Command @extra 2>&1 | Out-String
   Pop-Location
   $i = $out.IndexOf("{`n"); if ($i -lt 0) { $i = $out.IndexOf("{`r`n") }
   $sandboxLog = if (Test-Path $Log) { (Get-Content $Log) -join ' / ' } else { '' }

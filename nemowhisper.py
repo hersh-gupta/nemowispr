@@ -10,14 +10,14 @@
 # ]
 # ///
 """
-bolt_dictate.py -- push-to-talk dictation into any app, on the local Bolt llama-server.
+nemowhisper.py -- push-to-talk dictation into any app, on the local Bolt llama-server.
 
 Hold Ctrl+Win, speak, release. Bolt transcribes the audio verbatim, then cleans the text up
 (fillers, self-corrections, punctuation, lists) in a second request, and the result is
 pasted at the cursor. Pressing Esc (or any other key) while holding cancels.
 
 Hold Ctrl+Win+Shift instead (Shift any time during the hold) to speak a COMMAND: the raw
-transcript goes to the desktop agent in bolt_agent.py, which acts through UI Automation with
+transcript goes to the desktop agent in nemowhisper_agent.py, which acts through UI Automation with
 code-enforced confirmations (see that file). Any key press while the agent runs stops it.
 
 Measured 2026-11-15 on Bolt (b12419, DFlash on): transcription 0.25-0.7 s for 5-25 s of
@@ -51,12 +51,12 @@ Limit: the hotkey and paste don't reach elevated (admin) windows. Windows blocks
 from a normal process into them (UIPI).
 
 Usage:
-  start-dictate.cmd                                 # tray app, no console (uvw --gui-script)
-  uv run --script bolt_dictate.py --file a.wav      # run the pipeline on WAVs, print, no paste
-  uv run --script bolt_dictate.py --selftest        # assertions on tests\\clips\\dict-*.wav (10 synthetic clips)
-  uv run --script bolt_dictate.py --cliptest        # clipboard round trip (restores your text)
-  uv run --script bolt_dictate.py --smoke           # build the tray app's parts and exit
-  uv run --script bolt_dictate.py --agent "..." [--dry-run] [--confirm yes|no] [--cards] [--answer "..."]
+  start-nemowhisper.cmd                                 # tray app, no console (uvw --gui-script)
+  uv run --script nemowhisper.py --file a.wav      # run the pipeline on WAVs, print, no paste
+  uv run --script nemowhisper.py --selftest        # assertions on tests\\clips\\dict-*.wav (10 synthetic clips)
+  uv run --script nemowhisper.py --cliptest        # clipboard round trip (restores your text)
+  uv run --script nemowhisper.py --smoke           # build the tray app's parts and exit
+  uv run --script nemowhisper.py --agent "..." [--dry-run] [--confirm yes|no] [--cards] [--answer "..."]
 Data lives outside the repo, in ~\\.local\\dictate (or %BOLT_DICTATE_HOME%): dictate.log,
 history.jsonl (raw + cleaned text of every dictation and command, local only), last-failed.wav
 (for "Retry last failed" in the tray menu), generated tone/speech WAVs.
@@ -101,7 +101,7 @@ TRANSCRIBE_TIMEOUT = 60
 ANSWER_WINDOW_S = 120    # after the agent asks a question, the next command within this time answers it
 CLEANUP_TIMEOUT = 15
 
-log = logging.getLogger("bolt_dictate")
+log = logging.getLogger("nemowhisper")
 
 # --------------------------------------------------------------------------- prompts
 
@@ -463,7 +463,7 @@ class Clipboard:
     """Create and use on one thread (the clipboard owner window belongs to it)."""
 
     def __init__(self):
-        self.hwnd = user32.CreateWindowExW(0, "STATIC", "bolt-dictate-clipboard", 0, 0, 0, 0, 0, None, None, None, None)
+        self.hwnd = user32.CreateWindowExW(0, "STATIC", "nemowhisper-clipboard", 0, 0, 0, 0, 0, None, None, None, None)
         self.private = [user32.RegisterClipboardFormatW(n) for n in
                         ("ExcludeClipboardContentFromMonitorProcessing", "CanIncludeInClipboardHistory", "CanUploadToCloudClipboard")]
 
@@ -749,8 +749,8 @@ def icon_image(state: str):
 class App:
     def __init__(self, warm=True):
         from pynput import keyboard
-        import bolt_agent                      # first import builds COM wrappers (slow): do it up front
-        self.bolt_agent = bolt_agent
+        import nemowhisper_agent                      # first import builds COM wrappers (slow): do it up front
+        self.nemowhisper_agent = nemowhisper_agent
         K = keyboard.Key
         self.CTRL, self.WIN, self.ESC = {K.ctrl, K.ctrl_l, K.ctrl_r}, {K.cmd, K.cmd_l, K.cmd_r}, K.esc
         self.SHIFT = {K.shift, K.shift_l, K.shift_r}
@@ -759,7 +759,7 @@ class App:
         self.held, self.combo, self.command = set(), False, False
         self.agent, self.agent_abort = None, threading.Event()
         self.pending = None                    # (agent, time) while the agent waits for an answer
-        self.session = bolt_agent.Session()    # memory across commands: turns, window ids
+        self.session = nemowhisper_agent.Session()    # memory across commands: turns, window ids
         self.clean, self.sounds = True, True
         self.cards, self.speak, self.toasts = True, False, False   # result channels (tray toggles)
         self.overlay = Overlay()
@@ -790,7 +790,7 @@ class App:
         if injected:
             return
         a = self.agent
-        if a is not None and not (a.in_dialog and self.bolt_agent.own_dialog_in_front()):
+        if a is not None and not (a.in_dialog and self.nemowhisper_agent.own_dialog_in_front()):
             self.agent_abort.set()             # any physical key stops a running agent, except answering its dialog
         k = self._name(key)
         if k == "shift":
@@ -859,7 +859,7 @@ class App:
 
     # --- job thread: HTTP, clipboard + paste, agent runs; serial (owns the clipboard window) ---
     def job_loop(self):
-        with self.bolt_agent.com_thread():     # UI Automation needs COM on the thread that uses it
+        with self.nemowhisper_agent.com_thread():     # UI Automation needs COM on the thread that uses it
             self._job_loop()
 
     def run_command(self, pcm, rate, held):
@@ -878,22 +878,22 @@ class App:
     def run_agent(self, res, **test_opts):
         """res['final'] is the command (or the answer to the agent's pending question).
         test_opts (confirm=, dry_run=) only from the CLI's --cards tests."""
-        if self.bolt_agent.RESET_WORDS.match(res["final"]):     # "start over": handled here, no model call
+        if self.nemowhisper_agent.RESET_WORDS.match(res["final"]):     # "start over": handled here, no model call
             self.forget()
             out = {"status": "done", "summary": "Conversation forgotten.", "say": "Okay, starting over.", "verified": True,
                    "steps": 0, "secs": 0, "gates": [], "trace": [], "problems": [], "unconfirmed": []}
             history({"type": "command", **res, "agent": out})
             return out
         resume = self.pending is not None and time.time() - self.pending[1] < ANSWER_WINDOW_S
-        if not resume and self.bolt_agent.STOP_WORDS.match(res["final"]):   # "stop" with nothing pending
+        if not resume and self.nemowhisper_agent.STOP_WORDS.match(res["final"]):   # "stop" with nothing pending
             out = {"status": "done", "summary": "Nothing to stop.", "say": "Okay.", "verified": True,
                    "steps": 0, "secs": 0, "gates": [], "trace": [], "problems": [], "unconfirmed": []}
             history({"type": "command", **res, "agent": out})
             self.card("info", "Okay", "Nothing was running.", res["final"], secs=4)
             return out
         if self.session.stale():
-            self.session = self.bolt_agent.Session()
-        agent = self.pending[0] if resume else self.bolt_agent.Agent(SERVER, MODEL, Desktop, abort=self.agent_abort,
+            self.session = self.nemowhisper_agent.Session()
+        agent = self.pending[0] if resume else self.nemowhisper_agent.Agent(SERVER, MODEL, Desktop, abort=self.agent_abort,
                                                                      session=self.session, **test_opts)
         self.pending = None
         self.agent_abort.clear()
@@ -923,7 +923,7 @@ class App:
         self.say(out["say"], tone=None if st in ("done", "question") else "error")
         if self.toasts:
             try:
-                self.icon.notify(f"{title}: {out['say']}"[:250], "Bolt agent")
+                self.icon.notify(f"{title}: {out['say']}"[:250], "NemoWhisper agent")
             except Exception:
                 log.exception("notify failed")
         self.set_state("idle", f"{title}: {out['say']}"[:100])
@@ -1000,9 +1000,9 @@ class App:
     def set_state(self, state, tip=None):
         if self.icon:
             self.icon.icon = self.images[state]
-            self.icon.title = ("Bolt Dictate: " + (tip or "hold Ctrl+Win to dictate"))[:127]
+            self.icon.title = ("NemoWhisper: " + (tip or "hold Ctrl+Win to dictate"))[:127]
         if state == "error" and tip:           # the tray icon is usually hidden under ^: put problems on screen
-            self.card("fail", "Bolt Dictate problem", tip, secs=15)
+            self.card("fail", "NemoWhisper problem", tip, secs=15)
 
     def play(self, name):
         if self.sounds and name in SOUNDS:
@@ -1021,7 +1021,7 @@ class App:
             self.set_state("error", f"Microphone error: {e}")
 
     def forget(self, *_):
-        self.session, self.pending = self.bolt_agent.Session(), None
+        self.session, self.pending = self.nemowhisper_agent.Session(), None
         self.card("info", "Conversation forgotten", "The next command starts fresh.", secs=4)
 
     def copy_raw(self, *_):
@@ -1050,7 +1050,7 @@ class App:
             M("Copy last raw transcript", self.copy_raw, enabled=lambda _: bool(self.last_raw)),
             M("Open folder (history, log)", lambda *_: os.startfile(HOME)),
             M("Quit", self.quit))
-        self.icon = pystray.Icon("bolt-dictate", self.images["idle"], "Bolt Dictate", menu)
+        self.icon = pystray.Icon("nemowhisper", self.images["idle"], "NemoWhisper", menu)
 
         def setup(icon):
             icon.visible = True
@@ -1145,7 +1145,7 @@ def cliptest() -> int:
     if kind == "other":
         print("SKIP: clipboard holds an image/files or is busy -- not touching it")
         return 0
-    probe = "bolt-dictate cliptest: ünïcödé ✓ 👍\nsecond line"
+    probe = "nemowhisper cliptest: ünïcödé ✓ 👍\nsecond line"
     seq = clip.set_text(probe, private=True)
     _, back = clip.snapshot()
     marked = clip._open()
@@ -1188,13 +1188,13 @@ def mictest() -> int:
 
 def smoke() -> int:
     """Build the tray app's parts without running it (no hook, no tray, no single-instance lock):
-    the uv environment's imports incl. bolt_agent, the warm mic, icons, the clipboard window and
+    the uv environment's imports incl. nemowhisper_agent, the warm mic, icons, the clipboard window and
     UI Automation on a COM worker thread. Safe to run next to a running copy."""
     checks = {}
     fg0 = user32.GetForegroundWindow()
     app = App()
-    checks["bolt_agent imported"] = app.bolt_agent is not None
-    app.overlay.show("info", "Bolt Dictate smoke test", "This card must not take the focus.", secs=None)
+    checks["nemowhisper_agent imported"] = app.nemowhisper_agent is not None
+    app.overlay.show("info", "NemoWhisper smoke test", "This card must not take the focus.", secs=None)
     time.sleep(0.8)
     checks["result card shown without taking focus"] = app.overlay.hwnd is not None and user32.GetForegroundWindow() == fg0
     app.overlay.hide()
@@ -1202,13 +1202,13 @@ def smoke() -> int:
     checks["no startup error"] = app.start_error is None
     checks["tray icons built"] = len(app.images) == len(COLORS)
     import pystray
-    checks["pystray icon constructible"] = pystray.Icon("bolt-dictate-smoke", app.images["idle"], "smoke") is not None
+    checks["pystray icon constructible"] = pystray.Icon("nemowhisper-smoke", app.images["idle"], "smoke") is not None
     box = {}
 
     def worker():
-        with app.bolt_agent.com_thread():
+        with app.nemowhisper_agent.com_thread():
             box["clipboard window"] = bool(Clipboard().hwnd)
-            box["uia on worker thread"] = len(app.bolt_agent.top_windows()) >= 0 and app.bolt_agent.auto.GetRootControl() is not None
+            box["uia on worker thread"] = len(app.nemowhisper_agent.top_windows()) >= 0 and app.nemowhisper_agent.auto.GetRootControl() is not None
             box["speech synthesis (not played)"] = speech_wav("Smoke test.", HOME / "speech-smoke.wav", "error") > 0.5
     init_sounds()
     t = threading.Thread(target=worker); t.start(); t.join(20)
@@ -1256,15 +1256,15 @@ def main():
     if a.smoke:
         sys.exit(smoke())
     if a.agent:
-        import bolt_agent
-        with bolt_agent.com_thread():
+        import nemowhisper_agent
+        with nemowhisper_agent.com_thread():
             Desktop.clip = Clipboard()
             opts = {"confirm": a.confirm, "dry_run": a.dry_run}
             if a.cards:     # through the tray app's own path: progress and result cards (mic left closed)
                 app = App(warm=False)
                 run, resume = (lambda c: app.run_agent({"final": c, "source": "cli"}, **opts)), None
             else:
-                agent = bolt_agent.Agent(SERVER, MODEL, Desktop, **opts)
+                agent = nemowhisper_agent.Agent(SERVER, MODEL, Desktop, **opts)
                 run, resume = agent.run, agent.resume
             steps = lambda o: " -> ".join(f"{t['tool']}({json.dumps(t['args'], ensure_ascii=False) if t['args'] else ''})"
                                           for t in o["trace"])
@@ -1286,12 +1286,12 @@ def main():
         return
 
     global _MUTEX   # one tray instance per session
-    _MUTEX = kernel32.CreateMutexW(None, False, "Local\\BoltDictate")
+    _MUTEX = kernel32.CreateMutexW(None, False, "Local\\NemoWhisper")
     if ctypes.get_last_error() == 183:   # ERROR_ALREADY_EXISTS: say so instead of exiting silently
         user32.MessageBoxW.argtypes = (wt.HWND, wt.LPCWSTR, wt.LPCWSTR, wt.UINT)
-        user32.MessageBoxW(None, "Bolt Dictate is already running.\n\nIts icon may be hidden: click the ^ arrow "
+        user32.MessageBoxW(None, "NemoWhisper is already running.\n\nIts icon may be hidden: click the ^ arrow "
                            "at the right end of the taskbar. To restart it, choose Quit there, then start it again.",
-                           "Bolt Dictate", 0x40 | 0x10000 | 0x40000)   # info icon, foreground, topmost
+                           "NemoWhisper", 0x40 | 0x10000 | 0x40000)   # info icon, foreground, topmost
         return
     init_sounds()
     try:

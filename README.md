@@ -1,4 +1,4 @@
-# NemoFlow
+# NemoWhisper
 
 Local, offline voice control for Windows, built on NVIDIA Nemotron 3.5 Bolt E4B ("Bolt") running in llama.cpp.
 
@@ -19,7 +19,7 @@ Every risky step is guarded in code, not by prompting. That covers sending, dele
 
 ```powershell
 .\scripts\run-bolt.ps1      # Bolt on http://127.0.0.1:8080 (ctx 128K, audio+vision, DFlash); ~84% of 12 GB VRAM
-.\start-dictate.cmd         # tray app; the icon may be hidden under the taskbar's ^ arrow
+.\start-nemowhisper.cmd         # tray app; the icon may be hidden under the taskbar's ^ arrow
 ```
 
 `run-bolt.ps1` takes `-LlamaDir` and `-ModelDir` (or `$env:LLAMA_CPP_DIR` / `$env:BOLT_MODEL_DIR`). It also has `-NoDFlash`, which brings VRAM down to ~71% and makes generation slower. Keep VRAM below ~92%: past that, Windows pages graphics memory and speed collapses. The server binds to 127.0.0.1 only.
@@ -53,7 +53,7 @@ It also has Retry last failed, Copy last raw transcript, Agent: forget this conv
 
 ```powershell
 .\tests\run-tests.ps1                 # smoke + dictation selftest + agent sandbox suite, with pass/fail counts
-uv run --script bolt_dictate.py --selftest      # dictation only: 10 synthetic clips in tests\clips (baseline 9/10)
+uv run --script nemowhisper.py --selftest      # dictation only: 10 synthetic clips in tests\clips (baseline 9/10)
 .\tests\agent\agent-e2e.ps1 -Command "..." -Confirm yes -Cards -Name x   # one agent run against the sandbox
 ```
 
@@ -77,9 +77,9 @@ None of this is in the repo.
 ## Layout
 
 ```
-bolt_dictate.py         tray app: hotkey, mic, transcription + cleanup, paste, on-screen card, CLI test modes
-bolt_agent.py           the desktop agent: tools, prompts, session memory, all safety gates
-start-dictate.cmd       launches the tray app (uvw, no console)
+nemowhisper.py          tray app: hotkey, mic, transcription + cleanup, paste, on-screen card, CLI test modes
+nemowhisper_agent.py    the desktop agent: tools, prompts, session memory, all safety gates
+start-nemowhisper.cmd   launches the tray app (uvw, no console)
 scripts/run-bolt.ps1    llama-server launcher for Bolt, with measured VRAM numbers
 tests/                  run-tests.ps1, dictation clips, agent sandbox + e2e scripts
 docs/NOTES.md           design notes and what each fix was for

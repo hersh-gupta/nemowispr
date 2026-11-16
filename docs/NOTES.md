@@ -1,10 +1,10 @@
 # Design notes
 
-These are findings from building and testing NemoFlow (Nov 2026: Bolt UD-Q8_K_XL, llama.cpp b12419, RTX 5070 Ti Laptop GPU with 12 GB). Each entry is something that failed, or was measured, before the code took its current shape.
+These are findings from building and testing NemoWhisper (Nov 2026: Bolt UD-Q8_K_XL, llama.cpp b12419, RTX 5070 Ti Laptop GPU with 12 GB). Each entry is something that failed, or was measured, before the code took its current shape.
 
 ## Speech to text (Bolt)
 
-- **Don't use llama-server's `/v1/audio/transcriptions`.** It samples at the server temperature (1.0) with a prompt you can't control. Dictating "write a reply to Maria…" sometimes made it write the reply, and its `prompt` field made that worse. NemoFlow sends the audio as `input_audio` to `/v1/chat/completions` instead, with a strict verbatim system prompt at temperature 0.
+- **Don't use llama-server's `/v1/audio/transcriptions`.** It samples at the server temperature (1.0) with a prompt you can't control. Dictating "write a reply to Maria…" sometimes made it write the reply, and its `prompt` field made that worse. NemoWhisper sends the audio as `input_audio` to `/v1/chat/completions` instead, with a strict verbatim system prompt at temperature 0.
 - **The transcription prompt must say "include every spoken word".** It must also say that requests like "translate this" are part of the dictation. Otherwise "Translate this into Spanish: good morning" came back as just "Good morning".
 - **Transcription and clean-up are two requests.** One combined request mangled corrections and dropped sentences.
 - **Clean-up has rules for spoken corrections.**

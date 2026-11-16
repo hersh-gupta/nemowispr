@@ -12,7 +12,7 @@ try {
   while ((Get-Date) -lt $deadline -and ($procs | Where-Object { -not (Get-Process -Id $_.Id -ErrorAction SilentlyContinue).MainWindowTitle })) { Start-Sleep -Milliseconds 300 }
   Push-Location $Repo
   $extra = @('--cards', '--confirm', 'yes'); foreach ($n in $Next) { $extra += '--answer', $n }
-  $out = uv run --script bolt_dictate.py --agent $Command @extra 2>&1 | Out-String
+  $out = uv run --script nemowhisper.py --agent $Command @extra 2>&1 | Out-String
   Pop-Location
   $i = $out.IndexOf("{`n"); if ($i -lt 0) { $i = $out.IndexOf("{`r`n") }
   $logText = @{}; foreach ($x in "A", "B") { $logText[$x] = if (Test-Path $logs[$x]) { (Get-Content $logs[$x]) -join ' / ' } else { '' } }

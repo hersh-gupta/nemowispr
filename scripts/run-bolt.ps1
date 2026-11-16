@@ -41,10 +41,10 @@
 
   Usage:
     .\run-bolt.ps1                        # ctx 131072, port 8080, vision+audio on, DFlash on
-    .\run-bolt.ps1 -Reasoning off         # no thinking by default (NemoFlow turns it off per request anyway)
+    .\run-bolt.ps1 -Reasoning off         # no thinking by default (NemoWhisper turns it off per request anyway)
     .\run-bolt.ps1 -NoDFlash              # plain decoding: faster prefill, slower generation
     .\run-bolt.ps1 -Port 8081 -NoVision   # side-by-side test without the projector
-    NemoFlow needs the projector (audio in) -- don't use -NoVision for it.
+    NemoWhisper needs the projector (audio in) -- don't use -NoVision for it.
   Paths: -LlamaDir / -ModelDir, or $env:LLAMA_CPP_DIR / $env:BOLT_MODEL_DIR; defaults under %USERPROFILE%.
 #>
 param(
