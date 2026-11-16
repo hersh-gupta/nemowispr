@@ -1,5 +1,6 @@
-param([switch]$SkipDictation, [switch]$SkipAgent)
-# The whole suite with pass/fail counts. Needs Bolt on :8080 (scripts\run-bolt.ps1).
+param([switch]$SkipDictation, [switch]$SkipAgent, [switch]$Full)
+# The suite with pass/fail counts. -Full adds the basic cases that rarely regress ("send, declined":
+# run it whenever _confirm or the confirmation dialog changes). Needs Bolt on :8080 (scripts\run-bolt.ps1).
 # The agent cases open sandbox windows and take focus for a few minutes: don't type meanwhile
 # (a focus change makes the agent stop, which shows up here as a failure).
 $T = $PSScriptRoot; $Repo = (Resolve-Path "$T\..").Path; $E = "$T\agent\agent-e2e.ps1"; $E2 = "$T\agent\agent-e2e-two.ps1"
@@ -28,8 +29,10 @@ if (-not $SkipAgent) {
   $sent = "SENT: hello from Bolt | urgent=True"
   $r = & $E -Command $send -Confirm yes -Cards -Name t-yes -AsObject
   Check "send, confirmed" ($r.Status -eq 'done' -and $r.Log -eq $sent) "$($r.Status) | $($r.Log)"
-  $r = & $E -Command $send -Confirm no -Cards -Name t-no -AsObject
-  Check "send, declined" ($r.Status -eq 'aborted' -and -not $r.Log) "$($r.Status) | $($r.Say)"
+  if ($Full) {
+    $r = & $E -Command $send -Confirm no -Cards -Name t-no -AsObject
+    Check "send, declined" ($r.Status -eq 'aborted' -and -not $r.Log) "$($r.Status) | $($r.Say)"
+  }
   $r = & $E -Command $send -Confirm yes -Cards -Mangle -Name t-mangle -AsObject
   Check "garbled text is caught, nothing sent" ($r.Status -eq 'failed' -and -not $r.Log) "$($r.Status) | $($r.Say)"
   $r = & $E -Command $send -Confirm yes -Cards -Busy -Name t-busy -AsObject

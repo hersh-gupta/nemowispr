@@ -12,3 +12,6 @@ __pycache__/
 
 # built from tests/agent/AgentSandbox.cs by tests/agent/build-sandbox.ps1
 *.exe
+
+# LinkedIn drafts and demo notes: personal, never pushed
+launch/

@@ -43,6 +43,7 @@
     .\run-bolt.ps1                        # ctx 131072, port 8080, vision+audio on, DFlash on
     .\run-bolt.ps1 -Reasoning off         # no thinking by default (NemoWispr turns it off per request anyway)
     .\run-bolt.ps1 -NoDFlash              # plain decoding: faster prefill, slower generation
+    .\run-bolt.ps1 -Model NVIDIA-Nemotron-3.5-Bolt-E4B-UD-Q4_K_XL.gguf   # another Bolt quant in -ModelDir
     .\run-bolt.ps1 -Port 8081 -NoVision   # side-by-side test without the projector
     NemoWispr needs the projector (audio in) -- don't use -NoVision for it.
   Paths: -LlamaDir / -ModelDir, or $env:LLAMA_CPP_DIR / $env:BOLT_MODEL_DIR; defaults under %USERPROFILE%.
@@ -56,6 +57,7 @@ param(
   [switch] $NoVision,              # skip the vision/audio projector
   [switch] $NoDFlash,              # disable DFlash speculative decoding (on by default)
   [int]    $DraftMax  = 7,         # must be < dflash.block_size (8)
+  [string] $Model     = "",        # Bolt GGUF file name in -ModelDir (or a full path); default UD-Q8_K_XL
   # llama.cpp CUDA build folder (llama-server.exe + its DLLs) and the unsloth GGUF snapshot folder
   [string] $LlamaDir  = $(if ($env:LLAMA_CPP_DIR) { $env:LLAMA_CPP_DIR } else { Join-Path $env:USERPROFILE "llama.cpp" }),
   [string] $ModelDir  = $(if ($env:BOLT_MODEL_DIR) { $env:BOLT_MODEL_DIR } else { Join-Path $env:USERPROFILE ".cache\huggingface\hub\models--unsloth--NVIDIA-Nemotron-3.5-Bolt-E4B-GGUF\snapshots\b738967d6da3441a7d1c71fcec15e49e32e16ecd" })
@@ -65,12 +67,16 @@ $ErrorActionPreference = "Stop"
 $DFlash = -not $NoDFlash
 $ROOT   = $LlamaDir
 $DIR    = $ModelDir
-$MODEL  = "$DIR\NVIDIA-Nemotron-3.5-Bolt-E4B-UD-Q8_K_XL.gguf"
+$Q8     = "$DIR\NVIDIA-Nemotron-3.5-Bolt-E4B-UD-Q8_K_XL.gguf"
+$ModelPath  = if (-not $Model) { $Q8 } elseif ([IO.Path]::IsPathRooted($Model)) { $Model } else { Join-Path $DIR $Model }
 $MMPROJ = "$DIR\mmproj-F16.gguf"
 $DRAFT  = "$DIR\dflash-NVIDIA-Nemotron-3.5-Bolt-E4B-Q8_0.gguf"
 
 # exact sizes guard against a partial download (a new HF revision lands in a new snapshot dir)
-$need = @{ $MODEL = 8192955584 }
+$need = @{}
+if ($ModelPath -eq $Q8) { $need[$ModelPath] = 8192955584 }        # other quants: must exist, with a sanity floor
+elseif (-not (Test-Path $ModelPath)) { throw "missing: $ModelPath" }
+elseif ((Get-Item $ModelPath).Length -lt 1GB) { throw "$(Split-Path $ModelPath -Leaf) is under 1 GB -- download incomplete?" }
 if (-not $NoVision) { $need[$MMPROJ] = 990373568 }
 if ($DFlash)        { $need[$DRAFT]  = 398892256 }
 if (-not (Test-Path "$ROOT\llama-server.exe")) { throw "missing: $ROOT\llama-server.exe" }
@@ -83,13 +89,15 @@ foreach ($f in $need.Keys) {
 # KV fit: 40 MiB of sliding-window cache + 16 KiB/token for the 4 global layers (matches fit-params).
 # Peak = fit-params estimate + ~65 MiB measured; DFlash adds ~1500 MiB measured (draft + its buffers).
 $kvMiB  = [math]::Round(40 + $Ctx * 16 / 1024)
-$estMiB = 4942 + $kvMiB + 692 + 65 + $(if ($NoVision) { 0 } else { 945 }) + $(if ($DFlash) { 1500 } else { 0 })
-Write-Host ("Nemotron-3.5-Bolt-E4B  ctx=$Ctx  KV~{0:N1} GiB  vision+audio=$(-not $NoVision)  reasoning=$Reasoning  dflash=$DFlash  alias=$Alias  -> http://127.0.0.1:$Port" -f ($kvMiB / 1024)) -ForegroundColor Cyan
+# GPU weights scale with the file: 4942 MiB of the 8192955584-byte Q8_K_XL (the rest is the PLE table, in RAM).
+$wMiB   = [math]::Round(4942 * (Get-Item $ModelPath).Length / 8192955584)
+$estMiB = $wMiB + $kvMiB + 692 + 65 + $(if ($NoVision) { 0 } else { 945 }) + $(if ($DFlash) { 1500 } else { 0 })
+Write-Host ("$(Split-Path $ModelPath -Leaf)  ctx=$Ctx  KV~{0:N1} GiB  vision+audio=$(-not $NoVision)  reasoning=$Reasoning  dflash=$DFlash  alias=$Alias  -> http://127.0.0.1:$Port" -f ($kvMiB / 1024)) -ForegroundColor Cyan
 Write-Host ("  estimated VRAM ~{0:N0} MiB ({1:P0} of 12227)" -f $estMiB, ($estMiB / 12227)) -ForegroundColor DarkCyan
 if ($estMiB -gt 11250) { Write-Warning "estimate is over the ~92% WDDM cliff -- lower -Ctx or add -NoVision" }
 
 $a = @(
-  "-m", $MODEL,
+  "-m", $ModelPath,
   "--alias", $Alias,
   "-c", "$Ctx",
   "-np", "1",              # one slot; auto can allocate N x the KV cache

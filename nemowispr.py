@@ -86,6 +86,8 @@ from pathlib import Path
 
 import numpy as np
 
+import nemowispr_ui as ui     # look, result-card artwork, control panel (nemowispr_ui.py, next to this file)
+
 SERVER = os.environ.get("BOLT_DICTATE_SERVER", "http://127.0.0.1:8080")
 MODEL = "bolt"
 HOME = Path(os.environ.get("BOLT_DICTATE_HOME", Path.home() / ".local" / "dictate"))
@@ -602,15 +604,16 @@ user32.GetWindowThreadProcessId.argtypes = (wt.HWND, ctypes.c_void_p); user32.Ge
 class Overlay:
     """Results on a small card above the taskbar's right end. Windows notifications can be off (they
     were, on this PC), and a toast can't stay up while the agent waits for an answer.
-    Tk lives on its own thread; other threads only queue requests. The card never takes focus -- the
-    agent's focus lock and the user's next keystroke depend on that -- so it is mapped once and then
-    only moved and faded (no show/hide that could activate it). It is click-through while a run is in
-    progress (the agent's mouse fallback must not hit it); a result card is dismissed by clicking it."""
-    COLORS = {"work": "#60a5fa", "ok": "#4ade80", "warn": "#fbbf24", "ask": "#fbbf24", "fail": "#f87171", "info": "#a1a1aa"}
-    BG, FG, MUTED, BORDER = "#1e1e22", "#f4f4f5", "#a1a1aa", "#3f3f46"
+    Tk lives on its own thread; other threads only queue requests (the control panel runs here too,
+    via call()). The card never takes focus -- the agent's focus lock and the user's next keystroke
+    depend on that -- so it is mapped once and then only moved and faded (alpha; no show/hide that
+    could activate it). It is click-through while a run is in progress (the agent's mouse fallback
+    must not hit it); a result card is dismissed by clicking it.
+    Look (nemowispr_ui): near-black card, Windows 11 rounded corners with a border in the result's
+    colour, a status badge (spinner while working) and an accent bar that sweeps while working."""
 
     def __init__(self):
-        self.q, self.ready, self.hwnd = queue.Queue(), threading.Event(), None
+        self.q, self.ready, self.hwnd, self.root = queue.Queue(), threading.Event(), None, None
         threading.Thread(target=self._run, daemon=True, name="overlay").start()
         self.ready.wait(10)
 
@@ -619,6 +622,10 @@ class Overlay:
 
     def hide(self):
         self.q.put(("hide",))
+
+    def call(self, fn):
+        """Run fn() on the Tk thread (the control panel lives there)."""
+        self.q.put(("call", fn))
 
     # --- overlay thread only ---
     def _run(self):
@@ -634,36 +641,56 @@ class Overlay:
             root = self.root = tk.Tk()
             root.withdraw()
             s = self.scale = root.winfo_fpixels("1i") / 96
-            top = self.top = tk.Toplevel(root, bg=self.BORDER)
+            F = ui.fonts(root)
+            top = self.top = tk.Toplevel(root, bg=ui.SURFACE)
             top.overrideredirect(True)
             top.attributes("-topmost", True)
             top.attributes("-alpha", 0.0)
             top.geometry("+-32000+-32000")
-            self.width = int(400 * s)
-            box = tk.Frame(top, bg=self.BG)
-            box.pack(fill="both", expand=True, padx=1, pady=1)
-            self.stripe = tk.Frame(box, width=int(5 * s), bg=self.COLORS["info"])
-            self.stripe.pack(side="left", fill="y")
-            inner = tk.Frame(box, bg=self.BG)
-            inner.pack(side="left", fill="both", expand=True, padx=int(12 * s), pady=int(9 * s))
-            wrap = self.width - int(32 * s)
-            self.title = tk.Label(inner, bg=self.BG, fg=self.FG, font=("Segoe UI Semibold", 10), anchor="w", justify="left", wraplength=wrap)
-            self.body = tk.Label(inner, bg=self.BG, fg=self.FG, font=("Segoe UI", 10), anchor="w", justify="left", wraplength=wrap)
-            self.heard = tk.Label(inner, bg=self.BG, fg=self.MUTED, font=("Segoe UI", 9), anchor="w", justify="left", wraplength=wrap)
-            for w in (self.title, self.body, self.heard):
-                w.pack(fill="x", anchor="w")
-            for w in (top, box, inner, self.stripe, self.title, self.body, self.heard):
+            self.width = int(408 * s)
+            self.bar = tk.Canvas(top, height=max(2, int(3 * s)), width=self.width, bg=ui.SURFACE, highlightthickness=0, bd=0)
+            self.bar.pack(fill="x")
+            self.bar_track = self.bar.create_rectangle(0, 0, self.width, 10, fill=ui.MUTED, outline="")
+            self.bar_seg = self.bar.create_rectangle(0, 0, 0, 10, fill=ui.GREEN_HI, outline="")
+            row = tk.Frame(top, bg=ui.SURFACE)
+            row.pack(fill="both", expand=True, padx=int(14 * s), pady=(int(11 * s), int(13 * s)))
+            B = self.B = int(34 * s)
+            self.badge = tk.Canvas(row, width=B, height=B, bg=ui.SURFACE, highlightthickness=0, bd=0)
+            self.badge.pack(side="left", anchor="n", padx=(0, int(12 * s)))
+            self.badge_img = self.badge.create_image(0, 0, anchor="nw")
+            self.badge_txt = self.badge.create_text(B // 2, B // 2, font=(F["icon"], 12), text="")
+            inner = tk.Frame(row, bg=ui.SURFACE)
+            inner.pack(side="left", fill="both", expand=True)
+            head = tk.Frame(inner, bg=ui.SURFACE)
+            head.pack(fill="x")
+            wrap = self.width - int((14 + 34 + 12 + 14) * s) - 4
+            self.title = tk.Label(head, bg=ui.SURFACE, fg=ui.FG, font=(F["textb"], 10), anchor="w", justify="left",
+                                  wraplength=wrap - int(72 * s))
+            self.title.pack(side="left", fill="x", expand=True)
+            self.brand = tk.Label(head, text="NEMOWISPR", bg=ui.SURFACE, fg=ui.FAINT, font=(F["caps"], 7))
+            self.brand.pack(side="right", anchor="ne", pady=(int(3 * s), 0))
+            self.body = tk.Label(inner, bg=ui.SURFACE, fg=ui.FG, font=(F["text"], 10), anchor="w", justify="left", wraplength=wrap)
+            self.heard = tk.Label(inner, bg=ui.SURFACE, fg=ui.MUTED, font=(F["text"], 9, "italic"), anchor="w",
+                                  justify="left", wraplength=wrap)
+            for w in (top, row, inner, head, self.bar, self.badge, self.title, self.brand, self.body, self.heard):
                 w.bind("<Button-1>", lambda e: self._hide())
+            ui.TK_THREAD = threading.get_ident()
+            mk = lambda im: ui.photo(im, root)
+            self.badges = {k: mk(ui.circle(B, ui.mix(c, ui.SURFACE, 0.84), ui.mix(c, ui.SURFACE, 0.55), bg=ui.SURFACE, width=s))
+                           for k, c in ui.KIND.items()}
+            self.spin_frames = [mk(im) for im in ui.spinner_frames(B, ui.GREEN, ui.SURFACE)]
             top.update_idletasks()
             self.hwnd = int(top.wm_frame(), 16)
             ex = user32.GetWindowLongW(self.hwnd, GWL_EXSTYLE)
             user32.SetWindowLongW(self.hwnd, GWL_EXSTYLE, ex | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_TRANSPARENT)
             user32.SetWindowPos(self.hwnd, None, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED)
+            ui.dwm_style(self.hwnd, border=ui.LINE, corners=2)
             root.update()
             fg = user32.GetForegroundWindow()
             if prev and fg != prev and user32.GetWindowThreadProcessId(fg, None) == kernel32.GetCurrentThreadId():
                 user32.SetForegroundWindow(prev)       # allowed: this thread holds the foreground right now
-            self.timer = None
+            self.timer = self.anim = self.spin = None
+            self.kind, self.shown, self.frame = None, False, 0
         except Exception:
             log.exception("overlay failed to start")
             self.ready.set()
@@ -677,9 +704,14 @@ class Overlay:
             while True:
                 req = self.q.get_nowait()
                 try:
-                    self._show(*req[1:]) if req[0] == "show" else self._hide()
+                    if req[0] == "show":
+                        self._show(*req[1:])
+                    elif req[0] == "hide":
+                        self._hide()
+                    else:
+                        req[1]()
                 except Exception:
-                    log.exception("overlay update failed")
+                    log.exception("overlay request failed")
         except queue.Empty:
             pass
         self.root.after(50, self._poll)
@@ -688,37 +720,87 @@ class Overlay:
         ex = user32.GetWindowLongW(self.hwnd, GWL_EXSTYLE)
         user32.SetWindowLongW(self.hwnd, GWL_EXSTYLE, (ex | WS_EX_TRANSPARENT) if on else (ex & ~WS_EX_TRANSPARENT))
 
+    def _cancel(self, *names):
+        for n in names:
+            if getattr(self, n):
+                self.root.after_cancel(getattr(self, n))
+                setattr(self, n, None)
+
     def _show(self, kind, title, body, heard, secs, clickthrough):
-        if self.timer:
-            self.root.after_cancel(self.timer); self.timer = None
-        color = self.COLORS.get(kind, self.COLORS["info"])
-        self.stripe.config(bg=color)
-        self.title.config(text=title, fg=color)
+        self._cancel("timer", "anim")
+        color = ui.KIND.get(kind, ui.MUTED)
+        self.kind = kind
+        self.title.config(text=title)
         self.body.config(text=body)
-        self.heard.config(text=f'Heard: "{heard}"' if heard else "")
+        self.heard.config(text=f"“{heard}”" if heard else "")
         for w in (self.body, self.heard):
             w.pack_forget()
         for w, t in ((self.body, body), (self.heard, heard)):   # in this order, only those with text
             if t:
-                w.pack(fill="x", anchor="w")
+                w.pack(fill="x", anchor="w", pady=(int(2 * self.scale), 0))
+        if kind == "work":
+            self.badge.itemconfig(self.badge_txt, text="")
+            self.bar.itemconfig(self.bar_track, fill=ui.mix(ui.GREEN, ui.SURFACE, 0.78))
+        else:
+            self.badge.itemconfig(self.badge_img, image=self.badges.get(kind, self.badges["info"]))
+            self.badge.itemconfig(self.badge_txt, text=ui.GLYPH.get(kind, ui.GLYPH["info"]), fill=color)
+            self.bar.itemconfig(self.bar_track, fill=color)
+            self.bar.coords(self.bar_seg, 0, 0, 0, 0)
+        self.brand.config(fg=ui.mix(ui.GREEN, ui.SURFACE, 0.3) if kind in ("ok", "work") else ui.FAINT)
         self.top.update_idletasks()
         h = self.top.winfo_reqheight()
         wa = (ctypes.c_long * 4)()
         user32.SystemParametersInfoW(0x30, 0, wa, 0)                 # SPI_GETWORKAREA: left, top, right, bottom
-        m = int(12 * self.scale)
-        self.top.geometry(f"{self.width}x{h}+{wa[2] - self.width - m}+{wa[3] - h - m}")
+        m = int(14 * self.scale)
+        x, y = wa[2] - self.width - m, wa[3] - h - m
+        ui.dwm_style(self.hwnd, border=ui.mix(color, ui.SURFACE, 0.35), corners=2, dark=False)
         self._clickthrough(clickthrough)
-        self.top.attributes("-alpha", 0.97)
         user32.SetWindowPos(self.hwnd, wt.HWND(-1), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)  # HWND_TOPMOST
+        if self.shown:
+            self.top.geometry(f"{self.width}x{h}+{x}+{y}")
+            self.top.attributes("-alpha", 0.99)
+        else:                                                         # fade in, rising a few pixels
+            self.shown = True
+            steps = (0.25, 0.5, 0.75, 0.92, 0.99)
+
+            def step(i=0):
+                self.top.geometry(f"{self.width}x{h}+{x}+{y + int((len(steps) - 1 - i) * 3 * self.scale)}")
+                self.top.attributes("-alpha", steps[i])
+                self.anim = self.root.after(16, step, i + 1) if i + 1 < len(steps) else None
+            step()
+        if kind == "work" and not self.spin:
+            self._spin()
         if secs:
             self.timer = self.root.after(int(secs * 1000), self._hide)
 
+    def _spin(self):
+        if not (self.shown and self.kind == "work"):
+            self.spin = None
+            return
+        self.frame += 1
+        self.badge.itemconfig(self.badge_img, image=self.spin_frames[self.frame % len(self.spin_frames)])
+        w = self.width
+        p = (self.frame * 0.018) % 1.4 - 0.3                      # sweep: a bright segment crossing the bar
+        self.bar.coords(self.bar_seg, int(p * w), 0, int((p + 0.3) * w), 10)
+        self.spin = self.root.after(40, self._spin)
+
     def _hide(self):
-        if self.timer:
-            self.root.after_cancel(self.timer); self.timer = None
-        self.top.attributes("-alpha", 0.0)
+        self._cancel("timer", "anim")
         self._clickthrough(True)
-        self.top.geometry("+-32000+-32000")
+        if not self.shown:
+            self.top.attributes("-alpha", 0.0)
+            self.top.geometry("+-32000+-32000")
+            return
+        steps = (0.7, 0.45, 0.2, 0.0)
+
+        def step(i=0):
+            self.top.attributes("-alpha", steps[i])
+            if i + 1 < len(steps):
+                self.anim = self.root.after(16, step, i + 1)
+            else:
+                self.anim, self.shown = None, False
+                self.top.geometry("+-32000+-32000")
+        step()
 
 
 def history(res: dict):
@@ -731,19 +813,8 @@ def history(res: dict):
 # --------------------------------------------------------------------------- tray app
 
 
-COLORS = {"idle": (95, 95, 100), "rec": (215, 40, 40), "busy": (225, 150, 20), "error": (140, 40, 160),
-          "agent": (30, 110, 220)}
-
-
-def icon_image(state: str):
-    from PIL import Image, ImageDraw
-    img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    d.ellipse((4, 4, 60, 60), fill=COLORS[state])
-    d.rounded_rectangle((25, 13, 39, 37), radius=7, fill="white")
-    d.arc((18, 22, 46, 46), start=0, end=180, fill="white", width=3)
-    d.line((32, 46, 32, 52), fill="white", width=3)
-    return img
+STATES = ("idle", "rec", "busy", "error", "agent")   # tray icon per state: nemowispr_ui.tray_icon
+RUN_BOLT = Path(__file__).parent / "scripts" / "run-bolt.ps1"
 
 
 class App:
@@ -771,8 +842,9 @@ class App:
         except Exception as e:                # no mic / device busy: run cold, say so in the tray
             log.exception("warm mic open failed; falling back to open-on-press")
             self.rec, self.start_error = Recorder(warm=False), f"Microphone error: {e}"
-        self.images = {s: icon_image(s) for s in COLORS}
+        self.images = {s: ui.tray_icon(s) for s in STATES}
         self.icon = None
+        self.panel = None                      # control panel: built on first open, on the overlay's Tk thread
 
     # --- keyboard hook: these two must stay trivial (set ops + queue.put only) ---
     def _name(self, key):
@@ -1029,6 +1101,13 @@ class App:
         if self.last_raw:
             self.jobs.put(("copy", self.last_raw))
 
+    def open_panel(self, *_, on_close=None):
+        def go():
+            if self.panel is None:
+                self.panel = ui.Panel(self.overlay.root, self, HOME, SERVER, RUN_BOLT, on_close=on_close)
+            self.panel.show()
+        self.overlay.call(go)
+
     def quit(self, *_):
         self.listener.stop()
         self.icon.stop()
@@ -1037,6 +1116,8 @@ class App:
         import pystray
         M = pystray.MenuItem
         menu = pystray.Menu(
+            M("Open control panel", self.open_panel, default=True),     # also a left click on the icon
+            pystray.Menu.SEPARATOR,
             M("Hold Ctrl+Win to dictate, +Shift for a command", None, enabled=False),
             M("Clean up with Bolt", lambda *_: setattr(self, "clean", not self.clean), checked=lambda _: self.clean),
             M("Keep mic open (no clipped first words)", self.toggle_warm, checked=lambda _: self.rec.warm),
@@ -1200,7 +1281,37 @@ def smoke() -> int:
     app.overlay.hide()
     checks["warm mic open"] = bool(app.rec.warm and app.rec.stream is not None and app.rec.stream.active)
     checks["no startup error"] = app.start_error is None
-    checks["tray icons built"] = len(app.images) == len(COLORS)
+    checks["tray icons built"] = len(app.images) == len(STATES)
+    built = threading.Event()
+
+    def build_panel():          # built withdrawn, never shown: must not take the focus either
+        try:
+            p = ui.Panel(app.overlay.root, app, HOME, SERVER, RUN_BOLT)
+            p.build()
+            box["_panel"] = p.top is not None and not p.top.winfo_viewable()
+            # the agent must refuse our own windows (Stop Bolt, Forget...) but still accept other apps'
+            # (the exact reason: under `uv run` this is python.exe, already blocked as a shell; the tray is pythonw.exe)
+            box["_gate"] = (app.nemowispr_agent.blocked(p.top.winfo_id()) == "NemoWispr's own window"
+                            and app.nemowispr_agent.blocked(user32.GetShellWindow()) is None)
+            p.top.destroy()
+        except Exception:
+            log.exception("control panel build failed")
+        built.set()
+    box = {}
+    app.overlay.call(build_panel)
+    built.wait(20)
+    time.sleep(0.3)
+    checks["control panel builds without taking focus"] = bool(box.pop("_panel", False)) and user32.GetForegroundWindow() == fg0
+    checks["agent refuses NemoWispr's own windows"] = bool(box.pop("_gate", False))
+    # a working card must stay click-through + no-activate; WS_EX_TRANSPARENT only passes clicks through
+    # while the window is layered, and Tk drops WS_EX_LAYERED at alpha 1.0 (hence 0.99)
+    app.overlay.show("work", "Smoke: working card", "click-through check", secs=None, clickthrough=True)
+    time.sleep(0.6)
+    ex = user32.GetWindowLongW(app.overlay.hwnd, GWL_EXSTYLE)
+    need = WS_EX_NOACTIVATE | WS_EX_TRANSPARENT | 0x80000          # + WS_EX_LAYERED
+    checks["working card is click-through and never activates"] = ex & need == need and user32.GetForegroundWindow() == fg0
+    app.overlay.hide()
+    time.sleep(0.2)
     import pystray
     checks["pystray icon constructible"] = pystray.Icon("nemowispr-smoke", app.images["idle"], "smoke") is not None
     box = {}
@@ -1220,6 +1331,52 @@ def smoke() -> int:
     return 0 if all(checks.values()) else 1
 
 
+def _on_tk(app, fn, timeout=15):
+    done = threading.Event()
+    app.overlay.call(lambda: (fn(), done.set()))
+    return done.wait(timeout)
+
+
+def panel_mode(shot=None) -> int:
+    """The control panel without the tray app: no hook, mic closed, no single-instance lock."""
+    app = App(warm=False)
+    closed = threading.Event()
+    app.open_panel(on_close=closed.set)
+    if shot:
+        t0 = time.time()
+        while app.panel is None and time.time() - t0 < 15:
+            time.sleep(0.1)
+        if app.panel:
+            app.panel.polled.wait(15)      # first status poll (NVML's first call wakes the GPU: ~2.4 s)
+        time.sleep(1.5)        # the gauge settling
+        return 0 if _on_tk(app, lambda: app.panel.screenshot(shot)) else 1
+    closed.wait()
+    return 0
+
+
+CARD_DEMO = (
+    ("work", "Working...  (any key stops it)", "Typing into the message box",
+     "In the Agent Sandbox window, type hello from Bolt in the message box, tick urgent, and press send"),
+    ("ok", "Done", "Sent “hello from Bolt” with urgent ticked.", "type hello from Bolt, tick urgent and press send"),
+    ("warn", "Done, but not confirmed", "I clicked Save, but the screen didn't show the change.", "save that"),
+    ("ask", "Agent asks  (hold Ctrl+Win+Shift to answer)", "Which window: Agent Sandbox A or Agent Sandbox B?", "type it in the sandbox"),
+    ("fail", "Didn't work", "The text in the box doesn't match what I typed, so I didn't send it.", "send it"),
+    ("info", "Didn't catch that", "Hold Ctrl+Win+Shift and try again.", ""),
+)
+
+
+def card_demo(folder) -> int:
+    Path(folder).mkdir(parents=True, exist_ok=True)
+    app = App(warm=False)
+    for kind, title, body, heard in CARD_DEMO:
+        app.overlay.show(kind, title, body, heard, secs=None, clickthrough=True)
+        time.sleep(0.9)
+        _on_tk(app, lambda k=kind: ui.grab(app.overlay.hwnd, str(Path(folder) / f"card-{k}.png")))
+    app.overlay.hide()
+    time.sleep(0.3)
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description="Push-to-talk dictation on the local Bolt llama-server.")
     ap.add_argument("--file", nargs="+", help="run the pipeline on WAV files and print the result (no paste)")
@@ -1236,6 +1393,9 @@ def main():
                     help="with --agent: the reply if it asks a question (with --cards: else the next command, same session)")
     ap.add_argument("--speak", action="store_true", help="with --agent: read the result aloud")
     ap.add_argument("--cards", action="store_true", help="with --agent: run it the tray app's way, with on-screen cards")
+    ap.add_argument("--panel", action="store_true", help="open the control panel on its own (no hotkey, mic closed)")
+    ap.add_argument("--shot", metavar="PNG", help="with --panel: screenshot it after a few seconds and exit")
+    ap.add_argument("--card-demo", metavar="DIR", help="show each result-card kind and screenshot it into DIR")
     a = ap.parse_args()
 
     HOME.mkdir(parents=True, exist_ok=True)
@@ -1255,6 +1415,10 @@ def main():
         sys.exit(mictest())
     if a.smoke:
         sys.exit(smoke())
+    if a.panel:
+        sys.exit(panel_mode(a.shot))
+    if a.card_demo:
+        sys.exit(card_demo(a.card_demo))
     if a.agent:
         import nemowispr_agent
         with nemowispr_agent.com_thread():

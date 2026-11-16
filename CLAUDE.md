@@ -1,6 +1,6 @@
 # Working on NemoWispr
 
-Windows-only. There are two single-file Python scripts with inline PEP 723 dependencies, run through uv. There's no package or virtualenv to manage. Read `docs/NOTES.md` before changing behaviour: most of the code exists because something measurably failed without it.
+Windows-only. There are two single-file Python scripts with inline PEP 723 dependencies, run through uv, plus `nemowispr_ui.py`, which `nemowispr.py` imports from the same folder. There's no package or virtualenv to manage. Read `docs/NOTES.md` before changing behaviour: most of the code exists because something measurably failed without it.
 
 ## Rules
 
@@ -18,7 +18,9 @@ Windows-only. There are two single-file Python scripts with inline PEP 723 depen
 uv run --script nemowispr.py --smoke          # builds the tray app's parts; includes "card never takes focus"
 uv run --script nemowispr.py --selftest       # dictation, tests\clips (9/10 baseline)
 uv run --script nemowispr.py --agent "..." --dry-run          # plan against the real screen, change nothing
-.\tests\run-tests.ps1                            # everything; agent cases take focus for a few minutes
+uv run --script nemowispr.py --panel [--shot x.png]   # control panel alone (--shot: screenshot it, exit)
+uv run --script nemowispr.py --card-demo <dir>         # every result-card kind, screenshotted into <dir>
+.\tests\run-tests.ps1 [-Full]                    # 10 checks (-Full: 11); agent cases take focus for a few minutes
 ```
 
 ## Code map
@@ -27,7 +29,7 @@ uv run --script nemowispr.py --agent "..." --dry-run          # plan against the
   - `process`: transcribe (chat with `input_audio`, temperature 0), clean up, validate.
   - `Recorder`: warm mic with 0.5 s pre-roll.
   - `Clipboard` / `deliver`: paste, preserving the user's clipboard.
-  - `Overlay`: Tk card on its own thread.
+  - `Overlay`: Tk card on its own thread; `call()` runs the control panel on that same thread.
   - `App`: hook, control loop, job loop, tray.
   - `run_agent`: session, resume, and the reset/stop phrases.
   - `main`: CLI test modes.
@@ -40,3 +42,10 @@ uv run --script nemowispr.py --agent "..." --dry-run          # plan against the
     - `_click`: commit gate;
     - `_press_keys`: deny by default.
   - `_confirm`: MessageBox dialog; the full replaced text goes into the record.
+  - `blocked`: shells, consoles, and every window of this process (the panel's Stop/Forget aren't for the model).
+- `nemowispr_ui.py`
+  - Palette (`GREEN` #76B900 etc.), `KIND` colours, Pillow artwork (supersampled), `tray_icon`.
+  - `Photo` / `delete_font=False`: Tk objects only delete themselves on the Tk thread (exit hang otherwise).
+  - `gpu` (NVML), `health`, `props`, `start_bolt`, `stop_bolt` (port owner must be llama-server.exe).
+  - `launch_profiles`: Bolt GGUFs on disk × DFlash, VRAM estimates with run-bolt.ps1's constants (keep them in step).
+  - `Panel`: worker thread polls; `render` maps state onto canvas items; two-click gates on Start/Stop/Restart; the profile popover is canvas items (no extra window).

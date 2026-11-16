@@ -36,23 +36,34 @@ Every risky step is guarded in code, not by prompting. That covers sending, dele
 | Say "stop" / "cancel" / "never mind" in answer to a question | That task ends |
 
 Card colours:
-- green: done and checked;
-- amber: done but not confirmed, or a question;
+- green: done and checked on screen (a spinner and a sweeping bar while it works);
+- amber: done but not confirmed;
+- blue: a question for you;
 - red: didn't work;
 - grey: stopped.
 
-The tray menu has toggles for:
-- clean-up;
-- the warm microphone, which prevents clipped first words (Windows shows its mic-in-use indicator while it's on);
-- sounds;
-- on-screen results, spoken results and Windows notifications.
+### Control panel
 
-It also has Retry last failed, Copy last raw transcript, Agent: forget this conversation, and Quit.
+Left-click the tray icon (or choose **Open control panel**) for the panel:
+- **Bolt server:** online/loading/offline, a live VRAM gauge with the ~92% paging cliff marked, and the running model, quant and decoding.
+- **Launch profile:** a dropdown of every Bolt GGUF on disk × DFlash on/off, each with its estimated VRAM. For example, Q8_K_XL with DFlash is ~10.0 GB (84%), the fastest; without DFlash it's ~8.5 GB (71%), with faster prefill. Download another quant from the unsloth repo and it appears here. The choice is saved in `bolt-profile.json`. Only Bolt files are offered, because dictation needs Bolt's audio encoder and the DFlash drafter is trained against it.
+- **Start / Stop / Restart.** Start runs `scripts\run-bolt.ps1 -Model … [-NoDFlash]` hidden, logging to `bolt.log`, and asks for a second click if the profile wouldn't fit in the free VRAM. **Switch** (Restart) lights up when the chosen profile differs from the running one. Stop and Restart need a second click, are refused while the agent runs, and only kill the `llama-server.exe` that owns the port. Restart re-checks the VRAM fit after the old server has let go.
+- **Today:** words dictated, median dictation latency, agent runs and how many were verified on screen.
+- **Settings:** clean-up, warm mic (which prevents clipped first words; Windows shows its mic-in-use indicator while it's on), sounds, on-screen results, spoken results and Windows notifications.
+- **Recent:** the last five dictations and commands. The eye icon masks the text, for screen recordings.
+- **Actions:** Retry last failed, Copy last raw transcript, Forget the agent conversation, and open the Logs folder.
+
+The agent can't see or click the panel: every window of this process is off limits to it. The right-click tray menu still has the same toggles and Quit.
+
+```powershell
+uv run --script nemowispr.py --panel        # the panel on its own, without the hotkey or mic
+```
 
 ## Tests
 
 ```powershell
-.\tests\run-tests.ps1                 # smoke + dictation selftest + agent sandbox suite, with pass/fail counts
+.\tests\run-tests.ps1                 # smoke + dictation selftest + agent sandbox suite (10 checks), with pass/fail counts
+.\tests\run-tests.ps1 -Full           # adds the basic "send, declined" case: run it when the confirmation dialog changes
 uv run --script nemowispr.py --selftest      # dictation only: 10 synthetic clips in tests\clips (baseline 9/10)
 .\tests\agent\agent-e2e.ps1 -Command "..." -Confirm yes -Cards -Name x   # one agent run against the sandbox
 ```
@@ -79,6 +90,7 @@ None of this is in the repo.
 ```
 nemowispr.py          tray app: hotkey, mic, transcription + cleanup, paste, on-screen card, CLI test modes
 nemowispr_agent.py    the desktop agent: tools, prompts, session memory, all safety gates
+nemowispr_ui.py       the look (NVIDIA green), result-card artwork, control panel, Bolt start/stop
 start-nemowispr.cmd   launches the tray app (uvw, no console)
 scripts/run-bolt.ps1    llama-server launcher for Bolt, with measured VRAM numbers
 tests/                  run-tests.ps1, dictation clips, agent sandbox + e2e scripts

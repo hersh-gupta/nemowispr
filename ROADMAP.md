@@ -17,11 +17,16 @@ Two hard limits shape everything below:
 
 | Question | Decision |
 |---|---|
-| Repo visibility | Private for now |
+| Repo visibility | ~~Private for now~~ Public alongside the LinkedIn post, after a personal-data audit (Nov 16) |
 | Speech recognition | Evaluate NVIDIA's NeMo speech stack (Phase 2) |
 | Apps for adapters | Outlook, Zen browser, Obsidian, Notepad |
 | Calculator keypad | A per-app exception to the "typing needs a text field" rule |
 | Start with Windows | Not now; later |
+| Name (Nov 16) | NemoWispr, repo `hersh-gupta/nemowispr` |
+| BF16 weights (Nov 16) | Skipped. The BF16 GGUF is 14 GiB, ~8.7 GiB of it in VRAM vs ~4.8 for Q8_K_XL, so it only fits under the 92% cliff without DFlash and at 32K context, for ~3–4× slower generation. Q8_K_XL is near-lossless. |
+| Test suite (Nov 16) | Trim only: "send, declined" moved behind `-Full`; the default run is 10 checks |
+| Control panel (Nov 16) | A Tk window from the tray in NVIDIA green, with Start/Stop/Restart Bolt behind code gates; result cards restyled to match |
+| Model selection (Nov 16) | Launch profiles in the panel: every Bolt GGUF on disk × DFlash on/off, with estimated VRAM; `run-bolt.ps1 -Model`. Bolt only (audio encoder, drafter) |
 
 ## Principles to keep
 
@@ -34,7 +39,7 @@ Two hard limits shape everything below:
 
 There's no score for the agent yet, only anecdotes. Do this first, because it tells us which of the later options is worth doing.
 
-1. **Turn the suite into a benchmark.** `tests/run-tests.ps1` covers 11 checks today (startup smoke, the dictation self-test, and 9 agent checks). Add scenarios from the real failures, rebuilt in the sandbox:
+1. **Turn the suite into a benchmark.** `tests/run-tests.ps1` covers 10 checks by default (startup smoke, the dictation self-test, and 8 agent checks; `-Full` adds "send, declined"). Add scenarios from the real failures, rebuilt in the sandbox:
    - "add more to that list" (session memory);
    - "open X" when X is already open;
    - an Outlook-like compose form with placeholders and a cursor that doesn't follow `SetFocus`;

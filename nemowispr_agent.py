@@ -207,6 +207,8 @@ def blocked(h):
     """Reason string if the window is a shell/console or otherwise off limits, else None."""
     if not h:
         return None
+    if pid_of(root_of(h) or h) == OWN_PID:   # our own control panel / cards: Stop Bolt, Forget... are not for the model
+        return "NemoWispr's own window"
     exe, cls = exe_of(h), class_of(root_of(h) or h)
     if exe in BLOCKED_EXES:
         return exe

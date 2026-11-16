@@ -30,6 +30,15 @@ These are findings from building and testing NemoWispr (Nov 2026: Bolt UD-Q8_K_X
 - **Windows notifications can't be relied on.** They were turned off globally on the dev machine (`ToastEnabled=0`), so `notify()` showed nothing, success or failure. Results go on an on-screen card instead. Spoken results (SAPI) and notifications are opt-in toggles; the built-in Windows voice was judged poor.
 - **The card must never take focus.** The agent checks before every keystroke that its target window is in front, and aborts otherwise. Measured: Tk's first `update()` makes even its hidden root window the foreground window, despite `WS_EX_NOACTIVATE`. So the card is mapped once, hands the foreground back at startup, and after that is only moved and faded. `--smoke` checks this.
 - **The card ignores clicks while the agent works,** because the agent's mouse fallback must not land on it.
+- **The card's alpha is 0.99, not 1.0.** At 0.97, text from the window behind showed through. At exactly 1.0, Tk removes `WS_EX_LAYERED`, and without it `WS_EX_TRANSPARENT` no longer passes clicks through, so the agent's mouse fallback could hit the card. `--smoke` checks the style bits on a working card.
+
+## The control panel
+
+- **One Tk thread.** The panel is a `Toplevel` on the overlay's Tk thread (`Overlay.call`). Tray callbacks only enqueue; health checks, GPU reads, history and Bolt start/stop run on a worker thread.
+- **Tk objects must die on the Tk thread.** Measured: once the result card held `PhotoImage`s, `--smoke` passed every check and then hung forever at exit. Interpreter shutdown ran `__del__` on the main thread, and that cross-thread Tcl call waited for the frozen daemon Tk thread. `nemowispr_ui.Photo` skips the delete off-thread, and fonts are created with `delete_font=False`.
+- **NVML, not nvidia-smi.** `nvidia-smi` took ~2.4 s per call with the laptop dGPU idle, and polling it kept waking the GPU. `nvml.dll` takes ~2.4 s once (the wake-up) and ~0.3 ms per reading after that. Use `nvmlDeviceGetMemoryInfo_v2`. Measured at idle: v1 reported used=283 MiB, while v2 reported used=0 plus reserved=283, matching nvidia-smi. All the VRAM figures here (84%, the 92% cliff, run-bolt.ps1's estimates) are nvidia-smi numbers.
+- **The agent can't touch the panel.** `blocked()` refuses every window of this process. The tray runs as `pythonw.exe`, which isn't on the shell list, so without this a command given while the panel was in front could have read it and clicked "Stop Bolt".
+- **A background process can't take the foreground.** Opened from a shell, the panel appeared behind other windows. It is now topmost for 400 ms on open, then an ordinary window again.
 
 ## Agent
 
