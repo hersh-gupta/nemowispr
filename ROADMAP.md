@@ -1,4 +1,4 @@
-# NemoWhisper roadmap
+# NemoWispr roadmap
 
 ## Where it stands (Nov 15, 2026)
 
@@ -67,7 +67,7 @@ It's the upgrade path if the hardware changes.
 
 Steps:
 1. **Collect a real-mic eval set.** Add an opt-in "keep audio for eval" toggle and gather 30–50 real dictations. Today only text is kept.
-2. **Install NeMo-Speech.cpp** (CPU build first), run `nemo-speech serve --asr-model nemotron-3.5` on a port other than 8080, and add it to NemoWhisper as a second recogniser behind a setting.
+2. **Install NeMo-Speech.cpp** (CPU build first), run `nemo-speech serve --asr-model nemotron-3.5` on a port other than 8080, and add it to NemoWispr as a second recogniser behind a setting.
 3. **Compare** it with Bolt's audio input on the eval set: accuracy, the time from release to text, and CPU load. Then try streaming during the hold over the WebSocket.
 4. **Decide the architecture.** If NeMo wins, Bolt only does clean-up and the agent, both text-only, so the language model becomes swappable (see Phase 3.4). Keep the projector while `describe_screen` uses vision.
 5. **Personal vocabulary:** names, jargon and product names. Pass them to clean-up, and to the recogniser if it supports biasing.
@@ -111,8 +111,8 @@ Steps:
 
 ## Phase 5: engineering
 
-- **Move the data folder** from `%USERPROFILE%\.local\dictate` to `…\.local\nemowhisper`, with a one-time startup migration. Rename the `BOLT_DICTATE_*` environment variables, keeping the old names as fallbacks.
-- **Split the scripts** (`nemowhisper.py` is ~1,300 lines) into modules (`asr`, `cleanup`, `agent/`, `ui/overlay`, `win32`) while keeping `uv run`.
+- **Move the data folder** from `%USERPROFILE%\.local\dictate` to `…\.local\nemowispr`, with a one-time startup migration. Rename the `BOLT_DICTATE_*` environment variables, keeping the old names as fallbacks.
+- **Split the scripts** (`nemowispr.py` is ~1,300 lines) into modules (`asr`, `cleanup`, `agent/`, `ui/overlay`, `win32`) while keeping `uv run`.
 - **pytest unit tests** for the pure parts: leaked-call parser, stop/reset phrases, clean-up validation, `Session`. Add GitHub Actions on `windows-latest` for those. GPU and UI tests stay local.
 - **Pick a source of truth for the launcher.** `scripts/run-bolt.ps1` is a copy of `%USERPROFILE%\.local\llm\run-bolt.ps1`.
 - **Move hard-coded settings** (server URL, model alias, timeouts) into the settings file.

@@ -13,10 +13,10 @@ try { Invoke-RestMethod http://127.0.0.1:8080/health -TimeoutSec 3 | Out-Null } 
 
 Push-Location $Repo
 try {
-  $smoke = uv run --script nemowhisper.py --smoke 2>&1 | Out-String
+  $smoke = uv run --script nemowispr.py --smoke 2>&1 | Out-String
   Check "startup smoke" ($LASTEXITCODE -eq 0) (($smoke -split "`n" | Where-Object { $_ -match 'FAIL' }) -join '; ')
   if (-not $SkipDictation) {
-    $st = uv run --script nemowhisper.py --selftest 2>&1 | Out-String
+    $st = uv run --script nemowispr.py --selftest 2>&1 | Out-String
     $m = [regex]::Match($st, '(\d+)/(\d+) passed')
     # 9/10 is the known baseline: the email clip's trailing "Thanks." gets dropped
     Check "dictation selftest" ($m.Success -and [int]$m.Groups[1].Value -ge 9) $m.Value

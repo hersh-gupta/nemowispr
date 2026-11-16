@@ -1,7 +1,7 @@
 """
-nemowhisper_agent.py -- voice-command desktop agent on the local Bolt llama-server.
+nemowispr_agent.py -- voice-command desktop agent on the local Bolt llama-server.
 
-Used by nemowhisper.py (hold Ctrl+Win+Shift, speak a command, release). Bolt plans one tool call
+Used by nemowispr.py (hold Ctrl+Win+Shift, speak a command, release). Bolt plans one tool call
 at a time; the tools act through Windows UI Automation (named buttons, text boxes) rather than
 pixel coordinates, which a 4B model can't ground reliably.
 
@@ -42,7 +42,7 @@ import urllib.request
 
 import uiautomation as auto
 
-log = logging.getLogger("nemowhisper.agent")
+log = logging.getLogger("nemowispr.agent")
 
 MAX_STEPS = 15
 MAX_SECONDS = 90
@@ -215,7 +215,7 @@ def blocked(h):
     return None
 
 
-DIALOG_TITLE = "NemoWhisper: confirm"
+DIALOG_TITLE = "NemoWispr: confirm"
 
 
 def own_dialog_in_front() -> bool:
@@ -415,7 +415,7 @@ class AgentAborted(Exception):
 
 class Agent:
     def __init__(self, server, model, desktop, confirm=None, dry_run=False, abort=None, on_step=None, session=None):
-        """desktop: object with type_text(str) and press_combo(str) (SendInput, from nemowhisper).
+        """desktop: object with type_text(str) and press_combo(str) (SendInput, from nemowispr).
         confirm: None = ask the user with a dialog; "yes"/"no" = fixed answer (tests only).
         on_step: called with a short description of each action before it runs (the on-screen card).
         session: memory shared with earlier commands (a fresh one if None)."""
@@ -603,7 +603,7 @@ class Agent:
             self.in_dialog = True
             threading.Thread(target=raise_dialog, daemon=True).start()
             try:
-                r = user32.MessageBoxW(None, f"{what}\n\nAllow NemoWhisper's agent to do this?", DIALOG_TITLE,
+                r = user32.MessageBoxW(None, f"{what}\n\nAllow NemoWispr's agent to do this?", DIALOG_TITLE,
                                        0x4 | 0x30 | 0x100 | 0x40000 | 0x10000)   # YESNO|WARNING|DEFBUTTON2|TOPMOST|SETFOREGROUND
             finally:
                 self.in_dialog = False
