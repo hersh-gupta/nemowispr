@@ -1,6 +1,6 @@
 # NemoWispr
 
-![NemoWispr: voice-driven computer use on a 4B model, fully on-device. The control panel shows Bolt online at 84% VRAM, and a green "Done" card from a voice command that copied a total from Excel into Word](docs/images/cover.png)
+![NemoWispr: voice-driven computer use on a 4B model, fully on-device. The control panel shows Bolt online at 84% VRAM, next to a "Done" card for the command "get the link from my browser, summarize the page, and draft an Outlook email with the summary"](docs/images/cover.png)
 
 Local, offline voice control for Windows, built on NVIDIA Nemotron 3.5 Bolt E4B ("Bolt") running in llama.cpp.
 
