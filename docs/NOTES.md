@@ -63,6 +63,16 @@ These are findings from building and testing NemoWispr (Nov 2026: Bolt UD-Q8_K_X
   - **`summarize_page`** fetches the page and has Bolt summarize it in one call. It only fetches http(s) from public hosts (never this PC or the local network), and the page text is wrapped as data.
   - **`draft_email`** opens a `mailto:` link, so the mail app shows a filled-in draft and never sends by itself. A recipient is kept only if the user said that address. The body is shortened to fit the ~2,000-character link limit.
   - The prompt has one line telling the model to prefer these over clicking.
+- **General tools, not per-app tools (Nov 19).** Those three adapters each did one step of one flow, so they became tools that each cover a class of task, with apps described as data in `nemowispr_apps.json`:
+  - `open` takes an app, a document, a web address or an app link. Links are allowed only for listed schemes, so `file:` and `shell:` are refused.
+  - `context` reports what's in front: the front browser's address, the selected text, the clipboard and the date.
+  - `get_text` reads a page, window, selection, clipboard or document, and `transform` does one Bolt call over the text.
+  - `new_item` creates an email (`mailto:`), an event (a generated `.ics` file), an Obsidian note or a Teams message. A kind is offered only if its app is installed, and nothing is ever sent or saved.
+  - `calculate` does arithmetic by walking the parsed expression, never `eval`.
+  - `window` snaps, maximizes, minimizes or closes; close always asks.
+
+  Long text stays in code under handles (`t1`, `t2`), so the 4B model passes a handle instead of re-typing a page. Today's date is in every prompt.
+- **First-tool check:** `tests/agent/tool-choice.py` asks Bolt for the first tool on 22 spoken-style commands, one call each, with nothing executed. It scored 18/22 on the first pass. Two tool descriptions then changed: `window` says that no id means the window in front, and `context` now includes the clipboard. That brought it to 21/22. The remaining miss: "put a meeting on my calendar tomorrow at 3" calls `context` for the date before `new_item`, which costs a step but isn't the wrong tool.
 - **Excel cells are DataItems named by their address.** `find='B5'` returns `{"name": "B5", "value": "426,600"}`, but `find='total'` matches nothing, because the label "Total" sits in another cell. Naming the cell in the command ("the total in cell B5") works; otherwise the agent falls back to `describe_screen` (vision).
 - **A failed `find` now says where the caret is.** In an empty Word document, `find='Q3 report type'` matched nothing, and Bolt asked "where should I type?" in 3 of 3 runs, though the caret was already in the document. When the focus is in an editable field, the note now says so and that `type_text` types there.
 - **A fresh Chromium window has no accessibility tree on the first read.** Chromium (Edge, Zen, Electron apps) builds it only after a UI Automation client asks. The agent's first `read_screen` then finds nothing and it asks the user instead of retrying. Not fixed yet.

@@ -1,0 +1,37 @@
+{
+  "_about": "App definitions for the agent's general tools: data, not code. A new app is an entry here. 'link_schemes' lists the app links open() may follow (anything else is refused). A new_item kind is offered to the model only when its 'requires_scheme' is registered on this PC. Templates are filled with URL-encoded fields; 'recipients' fields are kept only if the user said the address. Nothing here ever sends: each kind opens a draft the user reviews.",
+
+  "link_schemes": ["http", "https", "mailto", "ms-settings", "obsidian", "msteams", "ms-word", "ms-excel",
+                   "ms-powerpoint", "ms-outlook", "ms-todo", "spotify", "zoommtg", "slack", "notion"],
+
+  "new_item": {
+    "email": {
+      "app": "the default mail app",
+      "how": "mailto",
+      "fields": ["to", "cc", "subject", "body"],
+      "recipients": ["to", "cc"],
+      "requires_scheme": "mailto"
+    },
+    "event": {
+      "app": "the default calendar app",
+      "how": "ics",
+      "fields": ["title", "start", "end", "location", "notes"],
+      "requires_ext": ".ics"
+    },
+    "note": {
+      "app": "Obsidian",
+      "how": "link",
+      "template": "obsidian://new?name={title}&content={body}",
+      "fields": ["title", "body"],
+      "requires_scheme": "obsidian"
+    },
+    "teams_message": {
+      "app": "Microsoft Teams",
+      "how": "link",
+      "template": "msteams:/l/chat/0/0?users={to}&message={body}",
+      "fields": ["to", "body"],
+      "recipients": ["to"],
+      "requires_scheme": "msteams"
+    }
+  }
+}
