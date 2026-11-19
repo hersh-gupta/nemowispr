@@ -69,7 +69,8 @@ BLOCKED_APP_NAMES = re.compile(r"\b(cmd|command prompt|powershell|pwsh|terminal|
 EDITOR_EXES = {"notepad.exe", "wordpad.exe", "winword.exe"}     # Enter is a newline there, not "send"
 # Word stems, so "Deleted Items", "Removing", "Sending" are caught too.
 COMMIT_NAME = re.compile(r"\b(send|post|submit|delet|remov|discard|eras|trash|buy|pay|purchas|order|checkout|confirm|"
-                         r"sign ?out|log ?out|uninstall|format|don'?t save|reply all|forward|publish|shar|overwrit)\w*", re.I)
+                         r"sign ?out|log ?out|uninstall|format|don'?t save|save\b.{0,12}|reply all|forward|publish|shar|overwrit)\w*",
+                         re.I)   # "save…": the agent clicked Zen's hidden "Save Link As…" thinking it was Save
 COMMIT_EXACT = {"yes", "ok", "okay", "allow", "continue", "proceed", "apply", "replace", "save"}   # 2nd click of most flows
 # Key combos are deny-by-default: anything not listed here needs confirmation (Alt+S sends in Outlook, etc.).
 SAFE_KEYS = {"tab", "shift+tab", "up", "down", "left", "right", "home", "end", "pageup", "pagedown", "esc", "escape",
@@ -795,6 +796,7 @@ class Agent:
         self._apps = None
         self.texts = {}                                 # text handles t1, t2... from get_text / transform / context
         self.seen_urls = set()                          # addresses read from a browser this task (get_text's gate)
+        self.drafts = set()                             # windows holding a new_item draft: hands off for this task
 
     # ---- run loop
     def run(self, command: str) -> dict:
@@ -1092,6 +1094,12 @@ class Agent:
                 time.sleep(0.1)
             return {"ok": True}
         if name in MUTATING:
+            # a draft opened by new_item is the user's to review. MEASURED: after the event page opened with its title,
+            # Bolt typed the title in again (doubled), tabbed through the form and clicked "Save Link As…".
+            fg = root_of(user32.GetForegroundWindow())
+            if self.drafts & {root_of(self.target) if self.target else None, fg}:
+                return {"error": "that window holds the draft you opened for the user to review: don't change it. "
+                                 "Call done and tell the user it's ready to check and save."}
             r = getattr(self, "_" + name)(a)
             self.dirty = True
             return r
@@ -1558,8 +1566,12 @@ class Agent:
         r = self._launch(target)
         if r.get("error"):
             return r
+        if self.target:
+            self.drafts.add(root_of(self.target) or self.target)      # hands off: see the MUTATING check in _exec
+        self.dirty = False                                            # nothing for the agent to verify: it's a draft
         return {**r, "kind": k, "sent": False, "note": "; ".join(
-            notes + [f"a draft {k} is open in {spec['app']} for the user to review; nothing was sent or saved"])}
+            notes + [f"the draft {k} is open in {spec['app']}, already filled in, for the user to check and save. "
+                     "Nothing was sent or saved. You're finished: call done"])}
 
     def _window(self, action, wid=""):
         act = str(action or "").lower().strip().replace(" ", "_").replace("-", "_")
