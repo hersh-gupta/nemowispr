@@ -13,10 +13,12 @@
       "requires_scheme": "mailto"
     },
     "event": {
-      "app": "the default calendar app",
-      "how": "ics",
+      "_note": "New Outlook opens .ics files as 'Add calendar' (an import), not as one event, so events use Outlook's own pre-filled 'new event' page; it saves only when the user clicks Save. Personal accounts use outlook.live.com; work or school accounts use outlook.office.com instead.",
+      "app": "Outlook's calendar (in the browser)",
+      "how": "link",
+      "template": "https://outlook.live.com/calendar/0/action/compose?rru=addevent&subject={title}&startdt={start}&enddt={end}&location={location}&body={notes}",
       "fields": ["title", "start", "end", "location", "notes"],
-      "requires_ext": ".ics"
+      "dates": ["start", "end"]
     },
     "note": {
       "app": "Obsidian",

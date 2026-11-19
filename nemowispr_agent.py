@@ -160,7 +160,8 @@ TOOLS = [
           "text = a handle like t1 (preferred) or the text itself. Returns a new handle.",
           {"instruction": _S, "text": _S}, ["instruction", "text"]),
     _tool("new_item", f"Open a new, pre-filled draft item. It never sends or saves: the user reviews it. Kinds: {_kind_list}. "
-          "Field values can be handles like t2. Put a recipient only if the user said that address.",
+          "Field values can be handles like t2. Put a recipient only if the user said that address. For an event, "
+          "write start/end as the user said them (e.g. 'this Saturday 5 pm'); code works out the dates.",
           {"kind": _S, "fields": {"type": "object"}}, ["kind", "fields"]),
     _tool("calculate", "Exact arithmetic: + - * / % ^, parentheses, round/abs/min/max/sqrt. Use it for any maths.",
           {"expression": _S}, ["expression"]),
@@ -467,6 +468,74 @@ def calculate(expression: str):
     return v
 
 
+_WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+_MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october",
+           "november", "december"]
+_TIME = re.compile(r"\b(noon|midnight)\b|\b(\d{1,2})(?::(\d{2}))?\s*(a\.?\s?m\.?|p\.?\s?m\.?)|\b([01]?\d|2[0-3]):([0-5]\d)\b"
+                   r"|\bat\s+(\d{1,2})\b(?!\s*(?:%|percent|minutes?|hours?|days?|[:/.]\d))", re.I)
+
+
+def _times(text: str) -> list:
+    """Clock times in order of appearance, as (hour, minute, has_am_pm)."""
+    out = []
+    for m in _TIME.finditer(text):
+        if m.group(1):
+            out.append((12 if m.group(1).lower() == "noon" else 0, 0, True))
+        elif m.group(2):
+            h, mi, pm = int(m.group(2)) % 12, int(m.group(3) or 0), m.group(4).lower().startswith("p")
+            out.append((h + 12 if pm else h, mi, True))
+        elif m.group(5):
+            out.append((int(m.group(5)), int(m.group(6)), True))
+        elif m.group(7):
+            h = int(m.group(7))
+            out.append((h + 12 if 1 <= h <= 6 else h, 0, False))       # "at 5" for a meeting is 5 p.m.
+    return out
+
+
+def resolve_when(text: str, now=None) -> dict:
+    """Dates and times from spoken words, in code: the model put "this Saturday" (said on Thursday the 19th) on the
+    28th. Returns {"date": date|None, "start": (h, m)|None, "end": (h, m)|None}. "this/coming X" and a bare weekday
+    are the next X (today counts); "next X" skips to the following week when X is still in this week."""
+    now = now or datetime.now()
+    t, today = text.lower(), now.date()
+    d = None
+    m = re.search(r"\b(\d{4})-(\d{2})-(\d{2})", t)
+    if m:
+        d = datetime(int(m[1]), int(m[2]), int(m[3])).date()
+    elif re.search(r"\bday after tomorrow\b", t):
+        d = today + timedelta(days=2)
+    elif re.search(r"\btomorrow\b", t):
+        d = today + timedelta(days=1)
+    elif re.search(r"\b(today|tonight|this (morning|afternoon|evening))\b", t):
+        d = today
+    else:
+        m = re.search(r"\b(?:(this|coming|next)\s+)?(" + "|".join(_WEEKDAYS) + r")\b", t)
+        if m:
+            delta = (_WEEKDAYS.index(m[2]) - today.weekday()) % 7
+            if m[1] == "next" and today.weekday() + delta <= 6:   # still this week (Mon-Sun): the week after
+                delta += 7
+            d = today + timedelta(days=delta)
+        else:
+            m = re.search(r"\b(" + "|".join(x[:3] for x in _MONTHS) + r")[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b|"
+                          r"\b(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?(" + "|".join(x[:3] for x in _MONTHS) + r")[a-z]*\b", t)
+            if m:
+                mon = [x[:3] for x in _MONTHS].index((m[1] or m[4])[:3]) + 1
+                day = int(m[2] or m[3])
+                d = datetime(today.year, mon, day).date()
+                if d < today:
+                    d = datetime(today.year + 1, mon, day).date()
+    ampm = r"(a\.?\s?m\.?|p\.?\s?m\.?)"
+    r = re.search(rf"\b(\d{{1,2}})(?::(\d{{2}}))?\s*{ampm}?\s*(?:to|until|till|-|–)\s*(\d{{1,2}})(?::(\d{{2}}))?\s*{ampm}", t)
+    if r:                                            # "5 p.m. to 8 p.m.", "5 to 8 pm": the first inherits the suffix
+
+        def conv(h, mi, suf):
+            h = int(h) % 12
+            return (h + 12 if suf.lower().startswith("p") else h, int(mi or 0))
+        return {"date": d, "start": conv(r[1], r[2], r[3] or r[6]), "end": conv(r[4], r[5], r[6])}
+    ts = _times(t)
+    return {"date": d, "start": ts[0][:2] if ts else None, "end": None}
+
+
 _cb = ctypes.WinDLL("user32", use_last_error=True)
 _cb.OpenClipboard.argtypes = (wt.HWND,)
 _cb.GetClipboardData.argtypes = (wt.UINT,); _cb.GetClipboardData.restype = wt.HANDLE
@@ -725,6 +794,7 @@ class Agent:
         self.msgs, self.question_call = [], None
         self._apps = None
         self.texts = {}                                 # text handles t1, t2... from get_text / transform / context
+        self.seen_urls = set()                          # addresses read from a browser this task (get_text's gate)
 
     # ---- run loop
     def run(self, command: str) -> dict:
@@ -1206,7 +1276,33 @@ class Agent:
             url = ""
         if url and not re.match(r"[a-z][a-z0-9+.-]*://", url, re.I):      # Chromium hides "https://"
             url = "https://" + url
+        if not url:
+            # MEASURED: Zen (Firefox) leaves its address box empty unless it's being typed in, but every tab's page is a
+            # Document whose value is its address. The active tab is the one whose title the window shows.
+            title = title_of(h).lower()
+            docs = self._browser_tabs(h)
+            hit = [u for n, u in docs if n and n.lower()[:40] in title] or [u for n, u in docs if docs and len(docs) == 1]
+            url = hit[0] if hit else ""
+        if url:
+            self.seen_urls.add(url.rstrip("/"))
         return url
+
+    def _browser_tabs(self, h) -> list:
+        """(title, address) of each page the browser exposes (Firefox/Zen: one Document per tab)."""
+        out = []
+        try:
+            for c, _d in auto.WalkControl(auto.ControlFromHandle(h), maxDepth=8):
+                if c.ControlTypeName == "DocumentControl":
+                    try:
+                        u = c.GetValuePattern().Value.strip()
+                    except Exception:
+                        u = ""
+                    if re.match(r"https?://", u, re.I) and (c.Name, u) not in out:
+                        out.append((c.Name or "", u))
+                        self.seen_urls.add(u.rstrip("/"))
+        except Exception:
+            pass
+        return out[:12]
 
     def _selection_text(self) -> str:
         try:
@@ -1226,7 +1322,8 @@ class Agent:
         browser = next((w for w in top_windows() if exe_of(w) in BROWSER_EXES), None)   # front-most browser
         if browser:
             url = self._browser_url_of(browser)
-            out["browser"] = {**self._win(browser), **({"url": url} if url else {})}
+            tabs = [{"title": n[:70], "url": u} for n, u in self._browser_tabs(browser) if u != url]
+            out["browser"] = {**self._win(browser), **({"url": url} if url else {}), **({"other_tabs": tabs[:8]} if tabs else {})}
         sel = self._selection_text()
         if sel:
             out["selection"] = {"handle": self._store(sel), "chars": len(sel), "preview": sel[:300]}
@@ -1288,6 +1385,13 @@ class Agent:
                 url = target if re.match(r"https?://", target, re.I) else (self._context().get("browser") or {}).get("url", "")
                 if not url:
                     return {"error": "no web address: pass target=<url>, or open the page in a browser"}
+                # the address is a claim: the model once made one up from a window title and summarized the wrong site.
+                # Only an address the browser showed, the user said, or an earlier tool result contained is fetched.
+                seen = self.seen_urls | set(re.findall(r"https?://[^\s\"'<>\\]+", self._said() + " " + json.dumps(
+                    [m.get("content") for m in self.msgs if m.get("role") == "tool"], ensure_ascii=False)))
+                if url.rstrip("/") not in {u.rstrip("/").rstrip(".,)") for u in seen}:
+                    return {"error": "that address wasn't shown by the browser or said by the user; call context to read "
+                                     "the open page's address"}
                 title, text = self._fetch_page(url)
                 if len(text) < 200:
                     return {"error": "the page has too little readable text (it may need a login); use source=window "
@@ -1363,6 +1467,10 @@ class Agent:
 
     def _ics(self, f):
         def when(s):
+            try:
+                return datetime.fromisoformat(str(s).replace("Z", "")).replace(tzinfo=None)
+            except ValueError:
+                pass
             s = str(s or "").strip().replace("T", " ")
             for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
                 try:
@@ -1385,6 +1493,37 @@ class Agent:
         p.write_text(ics, encoding="utf-8")
         return p
 
+    def _resolve_dates(self, f, notes):
+        """start/end from the user's own words, worked out in code (resolve_when). The model's dates are claims: used
+        only for whatever the user didn't say."""
+        def model_dt(v):
+            v = str(v or "").strip()
+            if not v:
+                return None
+            try:
+                return datetime.fromisoformat(v.replace("Z", "")).replace(tzinfo=None)
+            except ValueError:
+                w = resolve_when(v)
+                return datetime(w["date"].year, w["date"].month, w["date"].day, *w["start"]) if w["date"] and w["start"] else None
+        said = resolve_when(self._said())
+        sm, em = model_dt(f.get("start")), model_dt(f.get("end"))
+        day = said["date"] or (sm.date() if sm else None)
+        hm = said["start"] or ((sm.hour, sm.minute) if sm else None)
+        if not day or not hm:
+            raise ValueError("no day and time to use: ask the user when (e.g. 'tomorrow at 3')")
+        start = datetime(day.year, day.month, day.day, *hm)
+        if said["end"]:
+            end = datetime(day.year, day.month, day.day, *said["end"])
+        elif em and (em.hour, em.minute) > hm:              # the model's end time, on the day actually used
+            end = datetime(day.year, day.month, day.day, em.hour, em.minute)
+        else:
+            end = start + timedelta(hours=1)
+        if said["date"] and sm and sm.date() != day:
+            notes.append(f"used the day the user said ({day:%A %d %B}), not the model's {sm:%d %B}")
+        tz = datetime.now().astimezone().tzinfo
+        f["start"], f["end"] = (x.replace(tzinfo=tz).isoformat(timespec="seconds") for x in (start, end))
+        notes.append(f"when: {start:%A %d %B %Y, %H:%M}–{end:%H:%M}")
+
     def _new_item(self, kind, fields):
         """A pre-filled draft through the app's own entry point (mailto:, a calendar file, an app link). Gates: never
         sends or saves; a recipient is kept only if the user said that address."""
@@ -1404,6 +1543,8 @@ class Agent:
                     notes.append(f"a {rf} the user didn't say was left out")
                 f[rf] = ",".join(kept)
         try:
+            if spec.get("dates"):
+                self._resolve_dates(f, notes)
             if spec["how"] == "mailto":
                 target = self._mailto(f, notes)
             elif spec["how"] == "ics":
