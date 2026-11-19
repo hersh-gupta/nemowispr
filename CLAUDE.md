@@ -40,7 +40,9 @@ uv run --script nemowispr.py --card-demo <dir>         # every result-card kind,
     - `_read_screen`: text fields first, `find`, ids unique per task;
     - `_set_text` / `_type_text`: focus verified, read back;
     - `_click`: commit gate;
-    - `_press_keys`: deny by default.
+    - `_press_keys`: deny by default;
+    - `_open_file` / `find_documents`: documents only, from Documents/Desktop/Downloads, and every name word must be the user's;
+    - adapters: `_browser_url` (address bar), `_summarize_page` (public http(s) only), `_draft_email` (mailto, never sends; recipients only if said).
   - `_confirm`: MessageBox dialog; the full replaced text goes into the record.
   - `blocked`: shells, consoles, and every window of this process (the panel's Stop/Forget aren't for the model).
 - `nemowispr_ui.py`
