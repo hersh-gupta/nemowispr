@@ -1,5 +1,7 @@
 # NemoWispr
 
+![NemoWispr: voice-driven computer use on a 4B model, fully on-device. The control panel shows Bolt online at 84% VRAM, and a green "Done" card from a voice command that copied a total from Excel into Word](docs/images/cover.png)
+
 Local, offline voice control for Windows, built on NVIDIA Nemotron 3.5 Bolt E4B ("Bolt") running in llama.cpp.
 
 - **Dictation.** Hold **Ctrl+Win**, speak, and release. Bolt transcribes the audio and tidies it up: it removes fillers, applies spoken corrections and fixes punctuation and lists. The text is then pasted at the cursor. It works like Wispr Flow, but nothing leaves the machine.
