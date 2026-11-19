@@ -32,6 +32,8 @@ Every risky step is guarded in code, not by prompting. That covers sending, dele
 |---|---|
 | Hold Ctrl+Win, speak, release | Cleaned-up text is pasted where the cursor is |
 | Hold Ctrl+Win+Shift (Shift any time during the hold), speak, release | The agent carries out the command; the card shows progress, then the result |
+| Name a document in a command ("open the Q3 report…") | The agent opens it from Documents, Desktop or Downloads (documents only, never programs) |
+| "Get the link from my browser, summarize the page, and draft an email with it" | The agent reads the address bar, summarizes the page, and opens a filled-in draft in your mail app. It never sends; you review it |
 | Press any key while the agent works | It stops |
 | Hold Ctrl+Win+Shift within 2 minutes of a question | Your answer continues the same task |
 | Say "start over" / "new conversation" / "clear the context" | The agent forgets the conversation (it also forgets after 15 idle minutes) |

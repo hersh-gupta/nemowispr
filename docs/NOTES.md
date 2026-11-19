@@ -50,6 +50,22 @@ These are findings from building and testing NemoWispr (Nov 2026: Bolt UD-Q8_K_X
   - screen text wrapped as untrusted data;
   - any physical key aborts;
   - a 15-step and 90-second limit.
+- **`open_file` opens the user's documents by name (Nov 16).** Before it, `open_app` could only launch an app, so Office came up on its start screen, which lists the user's recent files, and the agent had no way to open a particular file. Gates:
+  - documents only (Office, PDF, text, Markdown, CSV), never programs, scripts, shortcuts or macro-enabled `.docm`/`.xlsm`/`.pptm`;
+  - only from Documents, Desktop and Downloads (three folders deep);
+  - the file's name must appear in the user's own words, since the model's argument is a claim;
+  - several different matches return the list, so the agent asks;
+  - an already-open file gets focused instead of opened again.
+
+  Measured: given "then open the Q3 report", Bolt called `open_app("Q3 report")`, so `open_app` falls back to `open_file` when no installed app matches but a document does.
+- **Adapters before clicks (Nov 19).** A command spanning several apps succeeded in 4 of 12 runs. The failures were the wrong tool, lost thread or a question mid-way, never a gate. Each adapter replaces a chain of clicks with one deterministic step:
+  - **`browser_url`** reads the front browser's address bar. The browser's own toolbar is native UI, so it's readable even before the page's accessibility tree exists.
+  - **`summarize_page`** fetches the page and has Bolt summarize it in one call. It only fetches http(s) from public hosts (never this PC or the local network), and the page text is wrapped as data.
+  - **`draft_email`** opens a `mailto:` link, so the mail app shows a filled-in draft and never sends by itself. A recipient is kept only if the user said that address. The body is shortened to fit the ~2,000-character link limit.
+  - The prompt has one line telling the model to prefer these over clicking.
+- **Excel cells are DataItems named by their address.** `find='B5'` returns `{"name": "B5", "value": "426,600"}`, but `find='total'` matches nothing, because the label "Total" sits in another cell. Naming the cell in the command ("the total in cell B5") works; otherwise the agent falls back to `describe_screen` (vision).
+- **A failed `find` now says where the caret is.** In an empty Word document, `find='Q3 report type'` matched nothing, and Bolt asked "where should I type?" in 3 of 3 runs, though the caret was already in the document. When the focus is in an editable field, the note now says so and that `type_text` types there.
+- **A fresh Chromium window has no accessibility tree on the first read.** Chromium (Edge, Zen, Electron apps) builds it only after a UI Automation client asks. The agent's first `read_screen` then finds nothing and it asks the user instead of retrying. Not fixed yet.
 - **Read-back.** After every write, the field is read back. A mismatch overrides the model's claim of success. The agent refuses to click Send while a text check is failing, because the confirmation dialog would show the text it meant to type, not what's actually in the field. A second mismatch on the same field ends the task.
 - **Session memory.** In the first real conversation, 7 of 15 commands failed only because each command started a fresh agent ("which list?", "which windows?"). The session keeps:
   - the last 8 turns;

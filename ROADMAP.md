@@ -80,7 +80,7 @@ Steps:
 
 ## Phase 3: agent capability
 
-1. **Adapters for Outlook, Zen, Obsidian and Notepad.** A 4B model plans badly across 10+ steps in a complex UI, so give it deterministic tools that use each app's own entry points instead of clicking where possible. Every adapter keeps the same gates.
+1. **Adapters for Outlook, Zen, Obsidian and Notepad.** A 4B model plans badly across 10+ steps in a complex UI, so give it deterministic tools that use each app's own entry points instead of clicking where possible. Every adapter keeps the same gates. **Done (Nov 19):** `open_file`, `browser_url`, `summarize_page` and `draft_email` (Outlook through `mailto:`). Ideas still worth taking from Windows-MCP (MIT): reading web pages as text through the browser, filling several fields in one step, and waiting for an app or element to appear.
    - **Outlook:** a `mailto:to?subject=…&body=…` link opens a filled-in compose window and never sends by itself. Sending stays a clicked, confirmed step.
    - **Zen browser** (Firefox-based): pass a URL on `zen.exe`'s command line to open it, or use Ctrl+L (already a safe key) and paste, for search and navigation.
    - **Obsidian:** `obsidian://new` / `obsidian://open` links, or plain file writes into the vault folder for "add this to my note". Obsidian is an Electron app, so first check whether its interface shows up to UI Automation at all before planning anything that clicks.
